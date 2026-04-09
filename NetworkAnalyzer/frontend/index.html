@@ -1,0 +1,1027 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>NetScan — Live WiFi Analyzer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Syne:wght@400;600;700;800&display=swap');
+
+  :root {
+    --bg:      #07090d;
+    --panel:   #0c1018;
+    --border:  #181f2e;
+    --border2: #1e2d44;
+    --accent:  #00d4ff;
+    --green:   #00ff9d;
+    --red:     #ff4560;
+    --yellow:  #ffc107;
+    --orange:  #ff6b35;
+    --purple:  #a78bfa;
+    --text:    #dde4f0;
+    --muted:   #4e6080;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family:'JetBrains Mono',monospace;
+    background:var(--bg); color:var(--text);
+    min-height:100vh; overflow-x:hidden;
+  }
+  body::before {
+    content:''; position:fixed; inset:0; pointer-events:none;
+    background-image:
+      linear-gradient(rgba(0,212,255,0.025) 1px,transparent 1px),
+      linear-gradient(90deg,rgba(0,212,255,0.025) 1px,transparent 1px);
+    background-size:48px 48px;
+  }
+
+  /* ── Header ── */
+  header {
+    position:sticky; top:0; z-index:200;
+    background:rgba(7,9,13,0.94); backdrop-filter:blur(16px);
+    border-bottom:1px solid var(--border);
+    padding:0 24px; height:58px;
+    display:flex; align-items:center; justify-content:space-between;
+  }
+  .logo {
+    font-family:'Syne',sans-serif; font-size:19px; font-weight:800;
+    color:var(--accent); display:flex; align-items:center; gap:10px;
+    letter-spacing:-0.3px;
+  }
+  .logo-box {
+    width:30px; height:30px; border:2px solid var(--accent); border-radius:5px;
+    display:flex; align-items:center; justify-content:center; font-size:13px;
+    box-shadow:0 0 14px rgba(0,212,255,0.25);
+  }
+  .iface-pill {
+    font-size:10px; padding:3px 10px; border-radius:20px;
+    border:1px solid var(--border2); color:var(--muted);
+    display:flex; align-items:center; gap:6px;
+  }
+  .iface-pill span { color:var(--accent); }
+  .hdr-right { display:flex; align-items:center; gap:12px; }
+  .status-dot {
+    width:7px; height:7px; border-radius:50%; background:var(--green);
+    animation:pdot 1.8s ease-in-out infinite;
+  }
+  .status-dot.off { background:var(--muted); animation:none; }
+  @keyframes pdot {
+    0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(0,255,157,.5)}
+    50%{opacity:.8;box-shadow:0 0 0 5px rgba(0,255,157,0)}
+  }
+  .status-lbl { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.7px; display:flex; align-items:center; gap:6px; }
+  .btn {
+    font-family:'JetBrains Mono',monospace; font-size:10px; font-weight:700;
+    text-transform:uppercase; letter-spacing:.7px;
+    padding:5px 13px; border-radius:5px; border:1px solid; cursor:pointer; transition:all .2s;
+  }
+  .btn-g  { border-color:var(--green);  color:var(--green);  background:rgba(0,255,157,.05); }
+  .btn-g:hover  { background:rgba(0,255,157,.14); }
+  .btn-r  { border-color:var(--red);    color:var(--red);    background:rgba(255,69,96,.05); }
+  .btn-r:hover  { background:rgba(255,69,96,.12); }
+  .btn-y  { border-color:var(--yellow); color:var(--yellow); background:rgba(255,193,7,.05); }
+  .btn-y:hover  { background:rgba(255,193,7,.12); }
+
+  /* ── Layout ── */
+  main {
+    position:relative; z-index:1;
+    padding:20px 24px;
+    display:grid;
+    grid-template-columns:repeat(4,1fr);
+    gap:14px;
+  }
+  .c2 { grid-column:span 2; }
+  .c3 { grid-column:span 3; }
+  .c4 { grid-column:span 4; }
+
+  /* ── Panel ── */
+  .panel {
+    background:var(--panel); border:1px solid var(--border);
+    border-radius:10px; overflow:hidden; transition:border-color .2s;
+  }
+  .panel:hover { border-color:var(--border2); }
+  .ph {
+    padding:12px 16px 9px; border-bottom:1px solid var(--border);
+    display:flex; align-items:center; justify-content:space-between;
+  }
+  .pt { font-family:'Syne',sans-serif; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:1.1px; color:var(--muted); }
+  .badge {
+    font-size:9px; padding:2px 7px; border-radius:20px;
+    text-transform:uppercase; letter-spacing:.5px;
+  }
+  .bl { background:rgba(0,255,157,.09); color:var(--green); border:1px solid rgba(0,255,157,.2); }
+  .bw { background:rgba(255,193,7,.09); color:var(--yellow); border:1px solid rgba(255,193,7,.2); }
+  .br { background:rgba(255,69,96,.09); color:var(--red); border:1px solid rgba(255,69,96,.2); }
+
+  /* ── Stat cards ── */
+  .sc { padding:18px 16px; }
+  .sv {
+    font-family:'Syne',sans-serif; font-size:30px; font-weight:800;
+    line-height:1; margin-bottom:4px;
+  }
+  .sl { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.7px; }
+  .ss { margin-top:8px; font-size:10px; color:var(--muted); }
+  .ss em { font-style:normal; color:var(--green); }
+  .ca { color:var(--accent); }
+  .cg { color:var(--green); }
+  .cp { color:var(--purple); }
+  .co { color:var(--orange); }
+  .cr { color:var(--red); }
+
+  /* ── Charts ── */
+  .cw { padding:14px 16px; position:relative; }
+  .cw canvas { max-height:100% !important; }
+
+  /* ── Table ── */
+  .tscroll { overflow-y:auto; max-height:320px; }
+  .tscroll::-webkit-scrollbar { width:3px; }
+  .tscroll::-webkit-scrollbar-thumb { background:var(--border2); border-radius:3px; }
+  table { width:100%; border-collapse:collapse; }
+  th {
+    position:sticky; top:0; background:var(--panel);
+    font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.8px;
+    color:var(--muted); padding:8px 10px; text-align:left;
+    border-bottom:1px solid var(--border);
+  }
+  td { font-size:11px; padding:6px 10px; border-bottom:1px solid rgba(24,31,46,.6); white-space:nowrap; max-width:160px; overflow:hidden; text-overflow:ellipsis; }
+  tr { transition:background .12s; }
+  tr:hover td { background:rgba(0,212,255,.035); }
+  tr.nr td { animation:rowin .5s ease; }
+  @keyframes rowin { from{background:rgba(0,212,255,.15)} to{background:transparent} }
+
+  .ptag {
+    display:inline-block; font-size:9px; font-weight:700;
+    padding:2px 6px; border-radius:3px; letter-spacing:.4px;
+  }
+  .pTCP    {background:rgba(0,212,255,.12);color:var(--accent)}
+  .pUDP    {background:rgba(167,139,250,.15);color:var(--purple)}
+  .pHTTP   {background:rgba(0,255,157,.1);color:var(--green)}
+  .pHTTPS  {background:rgba(0,255,157,.1);color:var(--green)}
+  .pDNS    {background:rgba(255,193,7,.1);color:var(--yellow)}
+  .pICMP   {background:rgba(255,69,96,.12);color:var(--red)}
+  .pSSH    {background:rgba(255,107,53,.12);color:var(--orange)}
+  .pFTP    {background:rgba(255,107,53,.1);color:var(--orange)}
+  .pARP    {background:rgba(78,96,128,.15);color:#94a3b8}
+  .pDHCP   {background:rgba(167,139,250,.12);color:var(--purple)}
+  .pSMTP   {background:rgba(78,96,128,.12);color:var(--muted)}
+  .pRDP    {background:rgba(255,69,96,.15);color:var(--red)}
+  .pOther  {background:rgba(78,96,128,.1);color:var(--muted)}
+  .pMySQL     {background:rgba(0,212,255,.08);color:#60a5fa}
+  .pPostgreSQL{background:rgba(167,139,250,.1);color:var(--purple)}
+
+  /* ── Filter bar ── */
+  .fbar { padding:9px 16px; border-bottom:1px solid var(--border); display:flex; gap:5px; flex-wrap:wrap; }
+  .fb {
+    font-family:'JetBrains Mono',monospace; font-size:9px; font-weight:700;
+    text-transform:uppercase; letter-spacing:.5px; padding:3px 8px;
+    border-radius:3px; border:1px solid var(--border2); background:transparent;
+    color:var(--muted); cursor:pointer; transition:all .15s;
+  }
+  .fb:hover { color:var(--text); border-color:var(--accent); }
+  .fb.act   { border-color:var(--accent); color:var(--accent); background:rgba(0,212,255,.07); }
+
+  /* ── IP bars ── */
+  .iplist { padding:10px 16px; }
+  .ipr { display:flex; align-items:center; gap:8px; margin-bottom:9px; }
+  .ipa { font-size:11px; min-width:128px; }
+  .iptrack { flex:1; height:3px; background:var(--border); border-radius:2px; }
+  .ipbar   { height:100%; border-radius:2px; background:var(--accent); transition:width .7s ease; }
+  .ipc { font-size:10px; color:var(--muted); min-width:36px; text-align:right; }
+  .iplabel { font-size:9px; color:var(--muted); text-transform:uppercase; letter-spacing:.7px; margin-bottom:6px; }
+
+  /* ── Alerts ── */
+  .alist { max-height:240px; overflow-y:auto; }
+  .alist::-webkit-scrollbar { width:3px; }
+  .alist::-webkit-scrollbar-thumb { background:var(--border2); border-radius:3px; }
+  .aitem {
+    display:flex; align-items:flex-start; gap:9px;
+    padding:9px 16px; border-bottom:1px solid rgba(24,31,46,.5);
+    font-size:11px; animation:ain .3s ease;
+  }
+  @keyframes ain { from{opacity:0;transform:translateX(-6px)} to{opacity:1;transform:translateX(0)} }
+  .aico { font-size:13px; margin-top:1px; }
+  .amsg { flex:1; line-height:1.5; }
+  .atm  { font-size:9px; color:var(--muted); margin-top:2px; }
+  .sev-high   .aico { color:var(--red); }
+  .sev-medium .aico { color:var(--yellow); }
+  .sev-low    .aico { color:var(--accent); }
+
+
+
+  /* ── DNS feed ── */
+  .dns-item {
+    padding:7px 16px; border-bottom:1px solid rgba(24,31,46,.4);
+    display:flex; align-items:center; gap:10px; font-size:11px;
+  }
+  .dns-dot { width:6px; height:6px; border-radius:50%; background:var(--yellow); flex-shrink:0; }
+  .dns-name { flex:1; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .dns-from { font-size:9px; color:var(--muted); }
+
+  /* ── Toast ── */
+  #toasts {
+    position:fixed; bottom:20px; right:20px; z-index:999;
+    display:flex; flex-direction:column; gap:7px;
+  }
+  .toast {
+    background:var(--panel); border:1px solid var(--border2);
+    border-left:3px solid var(--accent);
+    border-radius:6px; padding:9px 13px; font-size:11px;
+    max-width:290px; animation:tin .3s ease;
+    box-shadow:0 8px 24px rgba(0,0,0,.45);
+  }
+  @keyframes tin { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+
+  @media(max-width:1100px){ main{grid-template-columns:1fr 1fr} .c3,.c4{grid-column:span 2} }
+  @media(max-width:680px) { main{grid-template-columns:1fr;padding:14px} .c2,.c3,.c4{grid-column:span 1} }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-box">⬡</div>
+    NetScan
+    <span style="font-size:10px;color:var(--muted);font-weight:400;font-family:'JetBrains Mono',monospace">/ WiFi Analyzer</span>
+  </div>
+  <div class="iface-pill">Interface: <span id="iface-name">detecting…</span> &nbsp;|&nbsp; IP: <span id="local-ip">—</span></div>
+  <div class="hdr-right">
+    <div class="status-lbl"><div class="status-dot off" id="ws-dot"></div><span id="ws-lbl">Connecting</span></div>
+    <button class="btn btn-g" id="cap-btn" onclick="toggleCapture()">▶ Start</button>
+    <button class="btn btn-y" onclick="resetStats()">↺ Reset</button>
+  </div>
+</header>
+
+<main>
+  <!-- Stat cards -->
+  <div class="panel">
+    <div class="ph"><span class="pt">Packets</span><span class="badge bl">Live</span></div>
+    <div class="sc">
+      <div class="sv ca" id="s-pkts">0</div>
+      <div class="sl">Total Captured</div>
+      <div class="ss">Rate: <em id="s-pps">0</em> pkt/s</div>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="ph"><span class="pt">Data Volume</span></div>
+    <div class="sc">
+      <div class="sv cg" id="s-bytes">0 B</div>
+      <div class="sl">Total Transferred</div>
+      <div class="ss">Throughput: <em id="s-bps">0 B</em>/s</div>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="ph"><span class="pt">Uptime</span></div>
+    <div class="sc">
+      <div class="sv cp" id="s-uptime">00:00</div>
+      <div class="sl">Session Duration</div>
+      <div class="ss">Since <em id="s-since">—</em></div>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="ph"><span class="pt">Alerts</span><span class="badge bw" id="alert-badge">0</span></div>
+    <div class="sc">
+      <div class="sv co" id="s-alerts">0</div>
+      <div class="sl">Security Events</div>
+      <div class="ss">Last: <em id="s-last-alert">—</em></div>
+    </div>
+  </div>
+
+  <!-- Bandwidth chart -->
+  <div class="panel c3">
+    <div class="ph"><span class="pt">Bandwidth — Real WiFi Traffic</span><span class="badge bl">Real-time</span></div>
+    <div class="cw" style="height:185px"><canvas id="bw-chart"></canvas></div>
+  </div>
+
+  <!-- Protocol chart -->
+  <div class="panel">
+    <div class="ph"><span class="pt">Protocol Mix</span></div>
+    <div class="cw" style="height:210px"><canvas id="proto-chart"></canvas></div>
+  </div>
+
+  <!-- Top IPs -->
+  <div class="panel">
+    <div class="ph"><span class="pt">Top Talkers</span></div>
+    <div class="iplist">
+      <div class="iplabel">▲ Source IPs</div>
+      <div id="top-src">—</div>
+      <div class="iplabel" style="margin-top:12px">▼ Destination IPs</div>
+      <div id="top-dst">—</div>
+    </div>
+  </div>
+
+  <!-- Bandwidth per IP -->
+  <div class="panel">
+    <div class="ph"><span class="pt">Bandwidth per IP</span><span class="badge bl">Top Consumers</span></div>
+    <div class="iplist" id="ip-bandwidth">
+      <div style="padding:12px 16px;font-size:11px;color:var(--muted)">Analyzing traffic…</div>
+    </div>
+  </div>
+
+  <!-- Traffic Insights -->
+  <div class="panel c2">
+    <div class="ph"><span class="pt">Traffic Insights</span><span class="badge bl">Analysis</span></div>
+    <div style="max-height:260px;overflow-y:auto;" id="insights-panel">
+      <div style="padding:12px 16px;font-size:11px;color:var(--muted)">Generating insights…</div>
+    </div>
+  </div>
+
+  <!-- DNS feed -->
+  <div class="panel">
+    <div class="ph"><span class="pt">DNS Queries</span><span class="badge bw">Domains</span></div>
+    <div id="dns-list" style="max-height:210px;overflow-y:auto">
+      <div style="padding:12px 16px;font-size:11px;color:var(--muted)">Waiting for DNS…</div>
+    </div>
+  </div>
+
+  <!-- Packet table -->
+  <div class="panel c2">
+    <div class="ph"><span class="pt">Live Packet Feed — Your WiFi</span><span class="badge bl">Sniffing</span></div>
+    <div class="fbar" id="fbar">
+      <button class="fb act" onclick="setFilter('ALL')">All</button>
+      <button class="fb" onclick="setFilter('TCP')">TCP</button>
+      <button class="fb" onclick="setFilter('UDP')">UDP</button>
+      <button class="fb" onclick="setFilter('HTTP')">HTTP</button>
+      <button class="fb" onclick="setFilter('HTTPS')">HTTPS</button>
+      <button class="fb" onclick="setFilter('DNS')">DNS</button>
+      <button class="fb" onclick="setFilter('ICMP')">ICMP</button>
+      <button class="fb" onclick="setFilter('SSH')">SSH</button>
+      <button class="fb" onclick="setFilter('ARP')">ARP</button>
+    </div>
+    <div class="tscroll">
+      <table>
+        <thead><tr>
+          <th>#</th><th>Time</th><th>Proto</th>
+          <th>Source IP</th><th>Dest IP</th>
+          <th>Dport</th><th>Size</th><th>Flags</th><th>Info</th>
+        </tr></thead>
+        <tbody id="pkt-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Alerts -->
+  <div class="panel c2">
+    <div class="ph"><span class="pt">Security Alerts</span><span class="badge br">Threat Monitor</span></div>
+    <div class="alist" id="alert-list">
+      <div style="padding:12px 16px;font-size:11px;color:var(--muted)">No alerts yet…</div>
+    </div>
+  </div>
+
+</main>
+<div id="toasts"></div>
+
+<script>
+// ── Config ────────────────────────────────────────────────────────────────
+const API = 'http://localhost:8000';
+const WS  = 'ws://localhost:8000/ws/live';
+const MAX_ROWS = 200;
+const BW_POINTS = 50;
+
+// ── State ─────────────────────────────────────────────────────────────────
+let ws = null;
+let capturing = false;
+let activeFilter = 'ALL';
+let startTime = null;
+let allPackets = [];
+let dnsQueries = [];
+let bwLabels = [], bwBytes = [], bwPkts = [];
+let alertCount = 0;
+
+// ── Charts ────────────────────────────────────────────────────────────────
+Chart.defaults.color = '#4e6080';
+Chart.defaults.borderColor = '#181f2e';
+Chart.defaults.font.family = "'JetBrains Mono',monospace";
+Chart.defaults.font.size = 10;
+
+const bwChart = new Chart(
+  document.getElementById('bw-chart').getContext('2d'), {
+  type:'line',
+  data:{
+    labels:[],
+    datasets:[
+      { label:'Bytes/s', data:[], borderColor:'#00d4ff', backgroundColor:'rgba(0,212,255,0.06)', borderWidth:1.5, fill:true, tension:0.4, pointRadius:0 },
+      { label:'Pkts/s',  data:[], borderColor:'#00ff9d', backgroundColor:'rgba(0,255,157,0.04)', borderWidth:1.5, fill:true, tension:0.4, pointRadius:0, yAxisID:'y1' }
+    ]
+  },
+  options:{
+    responsive:true, maintainAspectRatio:false, animation:false,
+    plugins:{ legend:{ display:true, position:'top', labels:{ boxWidth:9, padding:14 } } },
+    scales:{
+      x:{ grid:{ color:'#181f2e' }, ticks:{ maxTicksLimit:8 } },
+      y:{ grid:{ color:'#181f2e' }, position:'left' },
+      y1:{ grid:{ display:false }, position:'right' }
+    }
+  }
+});
+
+const PCOLS = {
+  TCP:'#00d4ff',UDP:'#a78bfa',HTTP:'#00ff9d',HTTPS:'#34d399',
+  DNS:'#ffc107',ICMP:'#ff4560',SSH:'#ff6b35',FTP:'#fb923c',
+  ARP:'#94a3b8',DHCP:'#c084fc',SMTP:'#64748b',RDP:'#ff4560',
+  MySQL:'#60a5fa',PostgreSQL:'#a78bfa',NTP:'#4e6080',Other:'#334155'
+};
+
+const protoChart = new Chart(
+  document.getElementById('proto-chart').getContext('2d'), {
+  type:'doughnut',
+  data:{ labels:[], datasets:[{ data:[], backgroundColor:[], borderWidth:1.5, borderColor:'#0c1018', hoverOffset:6 }] },
+  options:{
+    responsive:true, maintainAspectRatio:false, cutout:'65%',
+    animation:{ duration:400 },
+    plugins:{
+      legend:{ position:'right', labels:{ boxWidth:8, padding:8 } },
+      tooltip:{ callbacks:{ label: c=>`  ${c.label}: ${c.parsed.toLocaleString()}` } }
+    }
+  }
+});
+
+// ── WebSocket ─────────────────────────────────────────────────────────────
+let reconnectAttempts = 0;
+let maxReconnectAttempts = 10;
+let reconnectDelay = 1000;
+
+function connect() {
+  try {
+    console.log(`[WS] ════ CONNECTING (attempt ${reconnectAttempts + 1}/${maxReconnectAttempts}) ════`);
+    console.log(`[WS] WebSocket URL: ${WS}`);
+    
+    ws = new WebSocket(WS);
+    
+    ws.onopen = () => {
+      console.log('[WS] ✓✓✓ WebSocket Connected ✓✓✓');
+      console.log('[WS] Sending initial metadata request...');
+      setStatus(true);
+      if (!startTime) { 
+        startTime = new Date(); 
+        document.getElementById('s-since').textContent = startTime.toLocaleTimeString();
+      }
+      toast('Connected — live capture active ✓', 'green');
+      reconnectAttempts = 0;
+      reconnectDelay = 1000;
+      fetchMeta();
+    };
+    
+    ws.onmessage = e => {
+      try {
+        const msg = JSON.parse(e.data);
+        handleMsg(msg);
+      } catch(err) {
+        console.error('[WS] Message parse error:', err);
+      }
+    };
+    
+    ws.onclose = () => {
+      console.log('[WS] ✗✗✗ Connection Closed ✗✗✗');
+      console.log(`[WS] State: capturing=${capturing}, reconnectAttempts=${reconnectAttempts}/${maxReconnectAttempts}`);
+      setStatus(false);
+      
+      // Only reconnect if user is still actively capturing
+      if (capturing && reconnectAttempts < maxReconnectAttempts) {
+        reconnectAttempts++;
+        console.log(`[WS] ⟳ Scheduling reconnect in ${reconnectDelay}ms (${reconnectAttempts}/${maxReconnectAttempts})`);
+        toast(`Lost connection. Reconnecting (${reconnectAttempts}/${maxReconnectAttempts})...`, 'yellow');
+        setTimeout(() => {
+          if (capturing) {
+            console.log('[WS] Executing scheduled reconnect...');
+            connect();
+          } else {
+            console.log('[WS] Skipping reconnect (capture stopped)');
+          }
+        }, reconnectDelay);
+        reconnectDelay = Math.min(reconnectDelay * 1.5, 10000);
+      } else if (capturing && reconnectAttempts >= maxReconnectAttempts) {
+        console.log('[WS] ✗✗✗ Max reconnection attempts exceeded ✗✗✗');
+        capturing = false;
+        document.getElementById('cap-btn').textContent = '▶ Start';
+        toast('Connection failed (max retries). Click Start to try again.', 'red');
+      } else {
+        console.log('[WS] Closed (user initiated or already stopped)');
+      }
+    };
+    
+    ws.onerror = (err) => {
+      console.error('[WS] ✗ WebSocket Error:', err);
+      setStatus(false);
+      toast('Connection error: unable to reach server', 'red');
+    };
+  } catch(e) {
+    console.error('[WS] Exception creating WebSocket:', e);
+    setStatus(false);
+    toast('Failed to create WebSocket: ' + e.message, 'red');
+  }
+}
+
+function disconnect() {
+  console.log('[UI] ✕✕✕ STOPPING CAPTURE ✕✕✕');
+  capturing = false;
+  reconnectAttempts = maxReconnectAttempts; // Prevent auto-reconnect
+  
+  // Close WebSocket immediately
+  if (ws) { 
+    try { ws.close(); } catch(e) {}
+    ws = null; 
+  }
+  
+  // Update UI
+  document.getElementById('cap-btn').textContent = '▶ Start';
+  setStatus(false);
+  
+  // Clear all real-time data
+  console.log('[UI] Clearing real-time data...');
+  allPackets = [];
+  dnsQueries = [];
+  bwLabels = [];
+  bwBytes = [];
+  bwPkts = [];
+  
+  // Clear UI elements
+  document.getElementById('pkt-body').innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:20px">Capture paused</td></tr>';
+  document.getElementById('dns-list').innerHTML = '<div style="padding:12px 16px;font-size:11px;color:var(--muted)">Waiting for DNS…</div>';
+  document.getElementById('insights-panel').innerHTML = '<div style="padding:12px 16px;font-size:11px;color:var(--muted)">Waiting for analysis…</div>';
+  document.getElementById('ip-bandwidth').innerHTML = '<div style="padding:12px 16px;font-size:11px;color:var(--muted)">Waiting for traffic data…</div>';
+  
+  // Clear bandwidth chart but keep history for archive
+  bwChart.data.labels = [];
+  bwChart.data.datasets[0].data = [];
+  bwChart.data.datasets[1].data = [];
+  bwChart.update('none');
+  
+  // Clear protocol chart
+  protoChart.data.labels = [];
+  protoChart.data.datasets[0].data = [];
+  protoChart.update('none');
+  
+  console.log('[UI] ✓ Capture stopped, UI cleared');
+}
+
+function toggleCapture() {
+  console.log('[UI] Toggle button clicked, capturing=', capturing);
+  
+  if (capturing) {
+    console.log('[UI] PAUSING capture...');
+    
+    // Immediately stop the UI
+    document.getElementById('cap-btn').textContent = '▶ Start';
+    
+    // Tell backend to stop
+    fetch(API+'/api/capture/stop', { method:'POST' })
+      .then(r => {
+        console.log('[API] Capture stop response:', r.status);
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      })
+      .then(d => {
+        console.log('[API] Stop result:', d);
+        toast('Capture paused ⏸', 'yellow');
+      })
+      .catch(err => {
+        console.error('[API] Stop error:', err);
+        toast('Error stopping capture: ' + err.message, 'red');
+      });
+    
+    // Close WebSocket and clear data
+    disconnect();
+    
+  } else {
+    console.log('[UI] STARTING capture...');
+    capturing = true;
+    document.getElementById('cap-btn').textContent = '⏸ Pause';
+    
+    // Reset reconnection counters
+    reconnectAttempts = 0;
+    reconnectDelay = 1000;
+    
+    // Tell backend to start capturing
+    fetch(API+'/api/capture/start', { method:'POST' })
+      .then(r => {
+        console.log('[API] Capture start response:', r.status);
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      })
+      .then(d => {
+        console.log('[API] Start result:', d);
+        console.log('[UI] Calling connect()...');
+        connect();
+      })
+      .catch(err => {
+        capturing = false;
+        document.getElementById('cap-btn').textContent = '▶ Start';
+        console.error('[API] Start error:', err);
+        toast('Failed to start capture: ' + err.message, 'red');
+      });
+  }
+}
+
+// ── Fetch interface metadata ───────────────────────────────────────────────
+async function fetchMeta() {
+  try {
+    const r = await fetch(API+'/', { signal: AbortSignal.timeout(3000) });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const d = await r.json();
+    document.getElementById('iface-name').textContent = d.interface || '—';
+    document.getElementById('local-ip').textContent   = d.local_ip  || '—';
+    console.log('[API] Metadata fetched:', d);
+    return d;
+  } catch(e) {
+    console.error('[API] Metadata fetch failed:', e);
+    document.getElementById('iface-name').textContent = 'offline';
+    document.getElementById('local-ip').textContent   = '—';
+    throw e;
+  }
+}
+
+// ── Message handler ───────────────────────────────────────────────────────
+function handleMsg(msg) {
+  if (!msg) {
+    console.warn('[WS] Received empty message');
+    return;
+  }
+  
+  if (msg.type !== 'batch') {
+    console.warn('[WS] Unexpected message type:', msg.type);
+    return;
+  }
+  
+  const { packets, bandwidth_snap, stats, new_alerts } = msg;
+  console.log('[WS] Batch received:', {pkts: packets?.length || 0, bw: !!bandwidth_snap, stats: !!stats, alerts: new_alerts?.length || 0});
+
+  // Packets
+  if (packets && Array.isArray(packets) && packets.length > 0) {
+    console.log(`[WS] Processing ${packets.length} packets`);
+    packets.forEach(p => {
+      allPackets.unshift(p);
+      // DNS feed
+      if (p.dns_query) {
+        dnsQueries.unshift({ query: p.dns_query, from: p.src_ip, time: p.timestamp });
+        if (dnsQueries.length > 60) dnsQueries.pop();
+      }
+    });
+    if (allPackets.length > MAX_ROWS) allPackets.length = MAX_ROWS;
+    renderTable();
+    renderDNS();
+  }
+
+  // Bandwidth
+  if (bandwidth_snap && bandwidth_snap.timestamp) {
+    const t = new Date(bandwidth_snap.timestamp).toLocaleTimeString();
+    bwLabels.push(t);
+    bwBytes.push(bandwidth_snap.bytes_per_sec || 0);
+    bwPkts.push((bandwidth_snap.packets_per_sec || 0) * 80);
+    if (bwLabels.length > BW_POINTS) { bwLabels.shift(); bwBytes.shift(); bwPkts.shift(); }
+    bwChart.data.labels = bwLabels;
+    bwChart.data.datasets[0].data = bwBytes;
+    bwChart.data.datasets[1].data = bwPkts;
+    bwChart.update('none');
+  }
+
+  // Stats bar
+  if (stats) {
+    const s = stats;
+    document.getElementById('s-pkts').textContent   = (s.total_packets||0).toLocaleString();
+    document.getElementById('s-bytes').textContent  = fmtB(s.total_bytes||0);
+    document.getElementById('s-pps').textContent    = (s.pps||0).toFixed(1);
+    document.getElementById('s-bps').textContent    = fmtB(s.bps||0);
+    document.getElementById('s-uptime').textContent = fmtT(s.uptime||0);
+
+    // Interface
+    if (s.interface) document.getElementById('iface-name').textContent = s.interface;
+
+    // Protocol chart
+    if (s.protocol_distribution) {
+      const labs = Object.keys(s.protocol_distribution);
+      const vals = Object.values(s.protocol_distribution);
+      protoChart.data.labels = labs;
+      protoChart.data.datasets[0].data = vals;
+      protoChart.data.datasets[0].backgroundColor = labs.map(l => PCOLS[l]||'#334155');
+      protoChart.update('none');
+    }
+
+    // Top IPs
+    if (s.top_src_ips) renderTopIPs(s.top_src_ips, 'top-src');
+  }
+
+  // Alerts
+  if (new_alerts && Array.isArray(new_alerts) && new_alerts.length) {
+    console.log(`[WS] Received ${new_alerts.length} alerts`);
+    new_alerts.forEach(addAlert);
+  }
+}
+
+// ── Render packet table ───────────────────────────────────────────────────
+function renderTable() {
+  const filtered = activeFilter === 'ALL' ? allPackets : allPackets.filter(p => p.protocol === activeFilter);
+  const rows = filtered.slice(0, 80);
+  document.getElementById('pkt-body').innerHTML = rows.map((p, i) => {
+    const t = new Date(p.timestamp).toLocaleTimeString();
+    const proto = p.protocol || 'Other';
+    const info = p.dns_query ? `DNS: ${p.dns_query}` : (p.http_host ? `Host: ${p.http_host}` : p.info || '');
+    return `<tr class="${i===0?'nr':''}">
+      <td style="color:var(--muted)">${p.id}</td>
+      <td style="color:var(--muted)">${t}</td>
+      <td><span class="ptag p${proto}">${proto}</span></td>
+      <td>${p.src_ip}</td>
+      <td>${p.dst_ip}</td>
+      <td style="color:var(--muted)">${p.dst_port||'—'}</td>
+      <td style="color:var(--muted)">${fmtB(p.size)}</td>
+      <td style="color:var(--yellow)">${p.flags||''}</td>
+      <td style="color:var(--muted);max-width:180px" title="${info}">${info}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Render DNS feed ───────────────────────────────────────────────────────
+function renderDNS() {
+  const el = document.getElementById('dns-list');
+  if (!dnsQueries.length) return;
+  el.innerHTML = dnsQueries.slice(0,30).map(d => `
+    <div class="dns-item">
+      <div class="dns-dot"></div>
+      <div class="dns-name">${d.query}</div>
+      <div class="dns-from">${d.from}</div>
+    </div>`).join('');
+}
+
+// ── Render top IPs ────────────────────────────────────────────────────────
+function renderTopIPs(list, elId) {
+  const max = list[0]?.[1] || list[0]?.count || 1;
+  document.getElementById(elId).innerHTML = list.slice(0,6).map(item => {
+    const ip = item.ip || item[0];
+    const count = item.count || item[1];
+    return `<div class="ipr">
+      <div class="ipa">${ip}</div>
+      <div class="iptrack"><div class="ipbar" style="width:${(count/max*100).toFixed(1)}%"></div></div>
+      <div class="ipc">${count}</div>
+    </div>`;
+  }).join('');
+}
+
+// ── Alerts ────────────────────────────────────────────────────────────────
+function addAlert(a) {
+  const el = document.getElementById('alert-list');
+  const icons = { high:'🔴', medium:'⚠️', low:'ℹ️' };
+  const icon = icons[a.severity] || '⚠️';
+  const sev  = `sev-${a.severity||'medium'}`;
+  const t = new Date(a.timestamp).toLocaleTimeString();
+  const item = document.createElement('div');
+  item.className = `aitem ${sev}`;
+  item.innerHTML = `<span class="aico">${icon}</span>
+    <div><div class="amsg">${a.message}</div><div class="atm">${t}</div></div>`;
+  if (el.children[0]?.textContent.includes('No alerts')) el.innerHTML = '';
+  el.prepend(item);
+  alertCount++;
+  document.getElementById('s-alerts').textContent = alertCount;
+  document.getElementById('alert-badge').textContent = alertCount;
+  document.getElementById('s-last-alert').textContent = t;
+}
+
+// ── Poll REST for stats and analytics ──────────────────────────────────────
+async function pollStats() {
+  try {
+    const r = await fetch(API+'/api/stats', { signal: AbortSignal.timeout(2500) });
+    if (!r.ok) {
+      console.warn(`[API] /stats returned ${r.status}`);
+      return;
+    }
+    
+    const d = await r.json();
+    if (!d) return;
+    
+    // Only update display data if we're actively capturing
+    if (!capturing) {
+      console.log('[API] Skipping stats display (capture stopped)');
+      return;
+    }
+    
+    // Top destination IPs
+    if (d.top_dest_ips && Array.isArray(d.top_dest_ips)) {
+      renderTopIPs(d.top_dest_ips, 'top-dst');
+    }
+
+    // Fetch production insights (non-blocking, only if capturing)
+    pollInsights().catch(err => console.warn('[API] /insights error:', err.message));
+    pollBandwidthPerIP().catch(err => console.warn('[API] bandwidth/ip error:', err.message));
+  } catch(e) {
+    console.error('[API] /stats error:', e.message);
+  }
+}
+
+// ── Poll insights from API ────────────────────────────────────────────────
+async function pollInsights() {
+  try {
+    const r = await fetch(API+'/api/insights', { signal: AbortSignal.timeout(2500) });
+    if (!r.ok) throw new Error('API error');
+    const d = await r.json();
+    
+    if (d && d.insights && Array.isArray(d.insights) && d.insights.length > 0) {
+      renderInsights(d.insights);
+    } else {
+      document.getElementById('insights-panel').innerHTML = 
+        '<div style="padding:12px 16px;font-size:11px;color:var(--muted)">Analyzing traffic patterns...</div>';
+    }
+  } catch(e) {
+    // Silently fail - API may not be ready yet or insights not generated
+    if (document.getElementById('insights-panel').children.length === 0) {
+      document.getElementById('insights-panel').innerHTML = 
+        '<div style="padding:12px 16px;font-size:11px;color:var(--muted)">Initializing insight engine...</div>';
+    }
+  }
+}
+
+// ── Render insights ───────────────────────────────────────────────────────
+function renderInsights(insights) {
+  const el = document.getElementById('insights-panel');
+  if (!insights || insights.length === 0) {
+    el.innerHTML = '<div style="padding:12px 16px;font-size:11px;color:var(--muted)">No significant insights at this time.</div>';
+    return;
+  }
+
+  const sevColor = {
+    'CRITICAL': '#ff4560',
+    'HIGH': '#ff6b35',
+    'MEDIUM': '#ffc107',
+    'LOW': '#00d4ff',
+    'INFO': '#4e6080'
+  };
+
+  el.innerHTML = insights.slice(0, 8).map((ins, idx) => {
+    const color = sevColor[ins.severity] || '#4e6080';
+    const typeStr = (ins.insight_type || 'unknown').replace(/_/g, ' ').toUpperCase();
+    const desc = (ins.description || '').substring(0, 120);
+    const ts = new Date(ins.timestamp);
+    const timeStr = ts.toLocaleTimeString();
+    
+    return `<div style="padding:10px 16px; border-bottom:1px solid rgba(24,31,46,.4); font-size:11px; line-height:1.5; animation:ain .3s ease ${idx*0.05}s both;">
+      <div style="display:flex; align-items:flex-start; gap:8px;">
+        <div style="width:6px; height:6px; border-radius:50%; background:${color}; flex-shrink:0; margin-top:3px;"></div>
+        <div style="flex:1;">
+          <div style="color:${color}; font-weight:600; margin-bottom:2px;">${typeStr}</div>
+          <div style="color:var(--text);">${desc}</div>
+          <div style="color:var(--muted); font-size:9px; margin-top:3px;">${timeStr}</div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── Poll bandwidth per IP ─────────────────────────────────────────────────
+async function pollBandwidthPerIP() {
+  try {
+    const r = await fetch(API+'/api/insights', { signal: AbortSignal.timeout(2500) });
+    if (!r.ok) throw new Error('API error');
+    const d = await r.json();
+    
+    if (d && d.top_consumers && Array.isArray(d.top_consumers) && d.top_consumers.length > 0) {
+      renderBandwidthPerIP(d.top_consumers);
+    }
+  } catch(e) {
+    // Silently fail if not available
+  }
+}
+
+// ── Render bandwidth per IP ───────────────────────────────────────────────
+function renderBandwidthPerIP(consumers) {
+  const el = document.getElementById('ip-bandwidth');
+  if (!consumers || !Array.isArray(consumers) || consumers.length === 0) {
+    el.innerHTML = '<div style="padding:12px 16px;font-size:11px;color:var(--muted)">Analyzing traffic...</div>';
+    return;
+  }
+
+  // Extract bandwidth values safely
+  const bwValues = consumers
+    .map(c => c.avg_bandwidth || 0)
+    .filter(v => v > 0);
+  
+  if (bwValues.length === 0) {
+    el.innerHTML = '<div style="padding:12px 16px;font-size:11px;color:var(--muted)">No bandwidth data yet.</div>';
+    return;
+  }
+
+  const maxVal = Math.max(...bwValues, 1);
+
+  el.innerHTML = consumers.slice(0, 8).map((item, idx) => {
+    const ip = item.ip || 'unknown';
+    const bw = item.avg_bandwidth || 0;
+    
+    if (bw === 0) return '';
+    
+    const pct = (bw / maxVal * 100).toFixed(1);
+    const color = bw > maxVal * 0.7 ? 'var(--red)' : (bw > maxVal * 0.4 ? 'var(--yellow)' : 'var(--green)');
+    
+    return `<div class="ipr" style="animation:ain .3s ease ${idx*0.04}s both;">
+      <div class="ipa">${ip}</div>
+      <div class="iptrack"><div class="ipbar" style="width:${pct}%; background:${color}; transition:width .6s ease;"></div></div>
+      <div class="ipc">${fmtB(bw)}/s</div>
+    </div>`;
+  }).filter(html => html !== '').join('');
+}
+
+// ── Reset ─────────────────────────────────────────────────────────────────
+async function resetStats() {
+  try { await fetch(API+'/api/reset', { method:'POST' }); } catch(e) {}
+  allPackets = []; dnsQueries = [];
+  bwLabels = []; bwBytes = []; bwPkts = [];
+  bwChart.data.labels=[]; bwChart.data.datasets.forEach(d=>d.data=[]);
+  bwChart.update();
+  protoChart.data.labels=[]; protoChart.data.datasets[0].data=[];
+  protoChart.update();
+  document.getElementById('pkt-body').innerHTML = '';
+  document.getElementById('dns-list').innerHTML = '<div style="padding:12px 16px;font-size:11px;color:var(--muted)">Waiting for DNS…</div>';
+  document.getElementById('alert-list').innerHTML = '<div style="padding:12px 16px;font-size:11px;color:var(--muted)">No alerts yet…</div>';
+  document.getElementById('top-src').innerHTML = '—';
+  document.getElementById('top-dst').innerHTML = '—';
+  ['s-pkts','s-bytes','s-pps','s-bps','s-alerts'].forEach(id => {
+    document.getElementById(id).textContent = id.includes('bytes')||id.includes('bps') ? '0 B' : '0';
+  });
+  alertCount = 0;
+  startTime = null;
+  document.getElementById('alert-badge').textContent = '0';
+  toast('Stats reset ✓', 'green');
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────
+function setFilter(f) {
+  activeFilter = f;
+  document.querySelectorAll('.fb').forEach(b =>
+    b.classList.toggle('act', b.textContent.trim() === f || (f==='ALL' && b.textContent.trim()==='All'))
+  );
+  renderTable();
+}
+
+function setStatus(on) {
+  const dot = document.getElementById('ws-dot');
+  const lbl = document.getElementById('ws-lbl');
+  
+  if (on) {
+    dot.className = 'status-dot'; // Remove 'off' class
+    lbl.textContent = 'Live';
+    lbl.style.color = 'var(--green)';
+  } else {
+    dot.className = 'status-dot off';
+    lbl.textContent = 'Offline';
+    lbl.style.color = 'var(--muted)';
+  }
+  console.log('[UI] Status:', on ? 'LIVE' : 'OFFLINE');
+}
+
+function fmtB(b) {
+  b = Number(b)||0;
+  if (b < 1024)       return b + ' B';
+  if (b < 1048576)    return (b/1024).toFixed(1) + ' KB';
+  if (b < 1073741824) return (b/1048576).toFixed(1) + ' MB';
+  return (b/1073741824).toFixed(2) + ' GB';
+}
+
+function fmtT(s) {
+  const m = Math.floor(s/60), sec = s%60;
+  return String(m).padStart(2,'0') + ':' + String(sec).padStart(2,'0');
+}
+
+function toast(msg, color='cyan') {
+  const c = { green:'var(--green)', yellow:'var(--yellow)', cyan:'var(--accent)', red:'var(--red)' };
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.style.borderLeftColor = c[color]||c.cyan;
+  el.textContent = msg;
+  document.getElementById('toasts').appendChild(el);
+  setTimeout(() => el.remove(), 3500);
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────
+console.log('[APP] ═══════════════════════════════════════════════════════════');
+console.log('[APP] NetScan v2.0 Starting...');
+console.log('[APP] API endpoint: ' + API);
+console.log('[APP] WebSocket endpoint: ' + WS);
+
+// Initialize status display
+setStatus(false);
+console.log('[APP] Status: OFFLINE (waiting for connection)');
+
+// Poll stats every 3 seconds (works independently of WebSocket)
+// Wrapped in safer function to catch errors
+setInterval(async () => {
+  try {
+    await pollStats();
+  } catch(e) {
+    console.error('[APP] pollStats error:', e);
+  }
+}, 3000);
+
+// Fetch initial metadata (doesn't require connection)
+console.log('[APP] Attempting to fetch server metadata...');
+fetchMeta()
+  .then(meta => {
+    console.log('[APP] ✓ Server is responsive');
+    console.log('[APP] Interface:', meta?.interface || 'unknown');
+    console.log('[APP] Local IP:', meta?.local_ip || 'unknown');
+  })
+  .catch(err => {
+    console.error('[APP] ✗ Server not responding:', err.message);
+    toast('Cannot connect to server. Make sure backend is running at ' + API, 'red');
+  });
+
+console.log('[APP] Ready. Click "Start" button to begin capturing.');
+console.log('[APP] ═══════════════════════════════════════════════════════════');
+</script>
+</body>
+</html>
